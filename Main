@@ -1,1 +1,30 @@
+#EnergyAuditKit code to read data from battery and log it onto the raspberry pi sd card 
+#pip install pyserial pymodbus
+import serial
+import serial.rs485 #not sure if this is needed
+from pymodbus.client import ModbusSerialClient as ModbusClient
+import os
+import time
 
+from datetime import datetime
+
+
+gauge = ModbusClient( #we can change the name from gauge 
+    method = "rtu",
+    port="/dev/ttyUSB0",  # May need to adjust the port used i.e USB1 or COM3?
+    baudrate=2400,        #this is the default baudrate, we can change it up to 9600bps thoughts? 
+    parity=serial.PARITY_NONE,
+    stopbits=serial.STOPBITS_ONE,
+    bytesize=serial.EIGHTBITS
+    )
+#should we add timeout and handling exceptions for this?
+
+SD_Card = "/media/pi/sdcard/logs" #we need to figure out the mount point for the sd card
+
+if not os.path.exists(SD_Card):
+    os.makedirs(SD_Card)
+
+
+#do you care whether voltage or current comes first and adjust, also adjust formatting
+
+gauge.close()
