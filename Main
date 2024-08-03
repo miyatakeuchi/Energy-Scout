@@ -5,9 +5,7 @@ import serial.rs485 #not sure if this is needed
 from pymodbus.client import ModbusSerialClient as ModbusClient
 import os
 import time
-
 from datetime import datetime
-
 
 gauge = ModbusClient( #we can change the name from gauge 
     method = "rtu",
@@ -20,10 +18,15 @@ gauge = ModbusClient( #we can change the name from gauge
 #should we add timeout and handling exceptions for this?
 
 SD_Card = "/media/pi/sdcard/logs" #we need to figure out the mount point for the sd card
+log_file = SD_Card + "/battery_log.txt"
+#we will have to change it from a txt file for the dashboard
 
 if not os.path.exists(SD_Card):
     os.makedirs(SD_Card)
 
+def log_data_to_file(data):
+    with open(log_file, "a") as file:
+        file.write(data + "\n")
 
 #do you care whether voltage or current comes first and adjust, also adjust formatting
 
