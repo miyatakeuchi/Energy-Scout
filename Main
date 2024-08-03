@@ -30,4 +30,3 @@ def log_data_to_file(data):
 
 #do you care whether voltage or current comes first and adjust, also adjust formatting
 
-gauge.close()
