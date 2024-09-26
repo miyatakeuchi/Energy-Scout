@@ -1,32 +1,77 @@
-#EnergyAuditKit code to read data from battery and log it onto the raspberry pi sd card 
-#pip install pyserial pymodbus
 import serial
-import serial.rs485 #not sure if this is needed
 from pymodbus.client import ModbusSerialClient as ModbusClient
+import struct
 import os
 import time
 from datetime import datetime
 
-gauge = ModbusClient( #we can change the name from gauge 
-    method = "rtu",
-    port="/dev/ttyUSB0",  # May need to adjust the port used i.e USB1 or COM3?
-    baudrate=2400,        #this is the default baudrate, we can change it up to 9600bps thoughts? 
+# Configuration for Modbus connection
+gauge = ModbusClient(
+    method="rtu",
+    port="/dev/ttyUSB0",  # Adjust as needed
+    baudrate=9600,        # Adjust as needed
     parity=serial.PARITY_NONE,
     stopbits=serial.STOPBITS_ONE,
     bytesize=serial.EIGHTBITS
-    )
-#should we add timeout and handling exceptions for this?
+)
 
-SD_Card = "/media/pi/sdcard/logs" #we need to figure out the mount point for the sd card
-log_file = SD_Card + "/battery_log.txt"
-#we will have to change it from a txt file for the dashboard
-
-if not os.path.exists(SD_Card):
-    os.makedirs(SD_Card)
+log_file = "/home/miyatakeuchi/battery_log.txt"
 
 def log_data_to_file(data):
     with open(log_file, "a") as file:
         file.write(data + "\n")
 
-#do you care whether voltage or current comes first and adjust, also adjust formatting
+def read_parameters():
+    """Read L3 voltage and current data from the Modbus device."""
+    print("Attempting to connect to the Modbus device...")
+    
+    if not gauge.is_socket_open():
+        if gauge.connect():
+            print("Connected successfully.")
+        else:
+            print("Failed to connect to the Modbus device.")
+            return None
+
+    print("Reading registers...")
+
+    # Read multiple registers in a single request
+    start_address = 0x0002  # Starting address for L3 voltage
+    num_registers = 40      # Total number of registers to read (adjust as needed)
+    
+    result = gauge.read_input_registers(start_address, num_registers)
+    
+    if result.isError():
+        print(f"Error reading registers: {result}")
+        gauge.close()
+        return None
+
+    # Extract L3 voltage (from the specific register)
+    voltage_L3 = struct.unpack('>f', struct.pack('>HH', result.registers[2], result.registers[1]))[0]  # L3 voltage
+
+    # Extract L3 current (assuming it's in a different register, e.g., 0x000A)
+    # Adjust this address as needed
+    current_registers = gauge.read_input_registers(0x000A, 2)
+    if current_registers.isError():
+        print(f"Error reading L3 current registers: {current_registers}")
+        gauge.close()
+        return None
+    
+    current_L1 = struct.unpack('>f', struct.pack('>HH', current_registers.registers[1], current_registers.registers[0]))[0]  # L3 current
+
+    return voltage_L3, current_L1
+
+# Main loop to read and log data periodically
+while True:
+    parameters = read_parameters()
+    if parameters is not None:
+        voltage_L3, current_L1 = parameters
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        data = f"{timestamp}, L3 Voltage: {voltage_L3:.2f}V, L1 Current: {current_L1:.2f}A"
+        log_data_to_file(data)
+        print(f"Logged data: {data}")
+    else:
+        print("Failed to read data from the Modbus device.")
+
+    time.sleep(60)  # Wait for 60 seconds before the next reading
+
 
