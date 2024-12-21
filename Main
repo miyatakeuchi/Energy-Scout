@@ -18,7 +18,7 @@ def log_data_to_file(data):
     with open(log_file, "a") as file:
         file.write(data + "\n")
 def read_parameters():
-    """Read Phase 2 voltage and Phase 1 current from the Modbus device."""
+    """Read various parameters from the Modbus device."""
     print("Attempting to connect to the Modbus device...")
     if not gauge.is_socket_open():
         if gauge.connect():
@@ -27,36 +27,41 @@ def read_parameters():
             print("Failed to connect to the Modbus device.")
             return None
     print("Reading registers...")
-    # Read Phase 2 line to neutral voltage from register 0x0002
-    start_address_voltage = 0x0002  # Modbus address for Phase 2 line to neutral volts
-    num_registers_voltage =40      # Reading 2 registers (32-bit float requires 2 registers)
-    result_voltage = gauge.read_input_registers(start_address_voltage, num_registers_voltage)
-    if result_voltage.isError():
-        print(f"Error reading Phase 2 voltage registers: {result_voltage}")
-        gauge.close()
+    try:
+        # Helper function to read and unpack float registers
+        def read_float_register(start_address, num_registers=2):
+            result = gauge.read_input_registers(start_address, num_registers)
+            if result.isError():
+                print(f"Error reading registers at address {start_address}: {result}")
+                return None
+            return struct.unpack('>f', struct.pack('>HH', *result.registers))[0]
+        # Phase 2 line to neutral voltage (register 0x0002)
+        voltage_L2 = read_float_register(0x0002)
+        # Phase 1 current (register 0x0006)
+        current_L1 = read_float_register(0x0006)
+        # Phase 1 power factor (register 0x001E)
+        power_factor_L1 = read_float_register(0x001E)
+        # Total system power factor (register 0x003E)
+        total_power_factor = read_float_register(0x003E)
+        # Total line THD (register 0x00FA)
+        total_line_thd = read_float_register(0x00FA)
+        return voltage_L2, current_L1, power_factor_L1, total_power_factor, total_line_thd
+    except Exception as e:
+        print(f"An exception occurred while reading parameters: {e}")
         return None
-    # Combine two 16-bit registers into a 32-bit float
-    voltage_L2 = struct.unpack('>f', struct.pack('>HH', result_voltage.registers[2], result_voltage.registers[1]))[0]
-    # Read Phase 1 current from register 0x0006
-    start_address_current = 0x0006  # Modbus address for Phase 1 current
-    num_registers_current = 2       # Reading 2 registers (32-bit float)
-    result_current = gauge.read_input_registers(start_address_current, num_registers_current)
-    if result_current.isError():
-        print(f"Error reading Phase 1 current registers: {result_current}")
-        gauge.close()
-        return None
-    # Combine two 16-bit registers into a 32-bit float
-    current_L1 = struct.unpack('>f', struct.pack('>HH', result_current.registers[0], result_current.registers[1]))[0]
-    return voltage_L2, current_L1
 # Main loop to read and log data periodically
 while True:
     parameters = read_parameters()
     if parameters is not None:
-        voltage_L2, current_L1 = parameters
+        voltage_L2, current_L1, power_factor_L1, total_power_factor, total_line_thd = parameters
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        data = f"{timestamp}, Phase 2 Voltage: {voltage_L2:.2f}V, Phase 1 Current: {current_L1:.2f}A"
+        data = (f"{timestamp}, Phase 2 Voltage: {voltage_L2:.2f}V, Phase 1 Current: {current_L1:.2f}A, "
+                f"Phase 1 Power Factor: {power_factor_L1:.2f}, Total Power Factor: {total_power_factor:.2f}, "
+                f"Total Line THD: {total_line_thd:.2f}%")
         log_data_to_file(data)
         print(f"Logged data: {data}")
     else:
         print("Failed to read data from the Modbus device.")
     time.sleep(60)  # Wait for 60 seconds before the next reading
+4:20
+This should include the total harmonic generation (thd) and power factor
