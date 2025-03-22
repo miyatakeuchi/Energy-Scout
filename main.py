@@ -12,7 +12,7 @@ gauge = ModbusClient(
     stopbits=serial.STOPBITS_ONE,
     bytesize=serial.EIGHTBITS
 )
-log_file = "/home/miyatakeuchi/battery_log.txt"  # Path where data will be logged
+log_file = "/home/ben/sensor_reading.txt"  # Path where data will be logged
 def log_data_to_file(data):
     """Logs the data to a text file."""
     with open(log_file, "a") as file:
