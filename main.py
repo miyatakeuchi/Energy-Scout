@@ -5,12 +5,23 @@ import time
 from datetime import datetime
 import os
 import paho.mqtt.client as mqtt
+import json
 
-# MQTT Setup
+# --- MQTT Setup ---
+def on_connect(client, userdata, flags, rc):
+    print("? Connected with result code " + str(rc))
+    client.subscribe("sensor_data")
+
+# Callback when a PUBLISH message is received from the server
+def on_message(client, userdata, msg):
+    print(f"?? Received on topic {msg.topic}: {msg.payload.decode()}")
+
 mqtt_client = mqtt.Client()
-mqtt_client.connect("localhost", 1883)  # Change 'localhost' to your broker IP if needed
+mqtt_client.on_connect = on_connect
+mqtt_client.on_message = on_message
+mqtt_client.connect("localhost", 1883)  # Change if broker is remote
 
-# Modbus Configuration
+# --- Modbus Configuration ---
 gauge = ModbusClient(
     method="rtu",
     port="/dev/ttyUSB0",
@@ -20,36 +31,31 @@ gauge = ModbusClient(
     bytesize=serial.EIGHTBITS
 )
 
-# Ensure logs folder exists
+# --- Ensure log folder exists ---
 os.makedirs("/home/ben/Energy-Scout/logs", exist_ok=True)
 
 def get_daily_log_filename():
-    """Returns the filename based on current day of the week."""
+    """Get log file path based on current day."""
     day_name = datetime.now().strftime("%A")
     return f"/home/ben/Energy-Scout/logs/{day_name}.txt"
 
 def log_data_to_file(data):
-    """Logs the data to a text file named by day."""
-    log_file = get_daily_log_filename()
-    with open(log_file, "a") as file:
+    """Append data to daily log file."""
+    with open(get_daily_log_filename(), "a") as file:
         file.write(data + "\n")
 
 def read_parameters():
-    """Read various parameters from the Modbus device."""
-    print("Attempting to connect to the Modbus device...")
+    """Read float values from Modbus device."""
     if not gauge.is_socket_open():
-        if gauge.connect():
-            print("Connected successfully.")
-        else:
-            print("Failed to connect to the Modbus device.")
+        if not gauge.connect():
+            print("? Failed to connect to Modbus device.")
             return None
 
-    print("Reading registers...")
     try:
-        def read_float_register(start_address, num_registers=2):
-            result = gauge.read_input_registers(start_address, num_registers)
+        def read_float_register(start_address):
+            result = gauge.read_input_registers(start_address, 2)
             if result.isError():
-                print(f"Error reading registers at address {start_address}: {result}")
+                print(f"? Error reading address {start_address}")
                 return None
             return struct.unpack('>f', struct.pack('>HH', *result.registers))[0]
 
@@ -60,32 +66,37 @@ def read_parameters():
         total_line_thd = read_float_register(0x00FA)
 
         return voltage_L3, current_L3, power_factor_L1, total_power_factor, total_line_thd
+
     except Exception as e:
-        print(f"An exception occurred while reading parameters: {e}")
+        print(f"?? Exception reading parameters: {e}")
         return None
 
-# Main loop to read, log, and publish every 60 seconds
+# --- Main Loop ---
 while True:
     parameters = read_parameters()
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     if parameters is not None:
-        voltage_L3, current_L3, power_factor_L1, total_power_factor, total_line_thd = parameters
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Log to file
-        data = (f"{timestamp}, Phase 2 Voltage: {voltage_L3:.2f}V, Phase 1 Current: {current_L3:.2f}A, "
-                f"Phase 1 Power Factor: {power_factor_L1:.2f}, Total Power Factor: {total_power_factor:.2f}, "
-                f"Total Line THD: {total_line_thd:.2f}%")
+        voltage_L3, current_L3, pf_L1, pf_total, thd = parameters
+
+        # ?? Log to file
+        data = (f"{timestamp}, Voltage L3: {voltage_L3:.2f}V, Current L3: {current_L3:.2f}A, "
+                f"PF L1: {pf_L1:.2f}, PF Total: {pf_total:.2f}, THD: {thd:.2f}%")
         log_data_to_file(data)
-        print(f"📝 Logged data: {data}")
-        
-        # MQTT Publish
-        mqtt_client.publish("energy_scout/voltage_L3", voltage_L3)
-        mqtt_client.publish("energy_scout/current_L3", current_L3)
-        mqtt_client.publish("energy_scout/pf_total", total_power_factor)
-        mqtt_client.publish("energy_scout/thd", total_line_thd)
-        print("📡 Published data to MQTT topics")
+        print("?? Logged to file:", data)
 
+        # ?? Publish as JSON to topic 'sensor_data'
+        payload = {
+            "voltage": voltage_L3,
+            "current": current_L3,
+            "power_factor": pf_total,
+            "thd": thd
+        }
+        mqtt_client.publish("sensor_data", json.dumps(payload))
+        print("sent:",payload)
     else:
-        print("⚠️ Failed to read data from the Modbus device.")
+        fail_msg = f"{timestamp} Failed to read Modbus data"
+        log_data_to_file(fail_msg)
+        print(fail_msg)
 
-    time.sleep(60)  # Read and publish every 60 seconds
+    time.sleep(5)  # Wait 60 seconds before next reading
