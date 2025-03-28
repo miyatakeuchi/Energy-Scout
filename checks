@@ -13,7 +13,7 @@ mqtt_client = mqtt.Client()
 mqtt_client.username_pw_set("EnergyScout1", "Atutu123")
 mqtt_client.tls_set()
 mqtt_client.connect("96d32576521941598cffab74430f6610.s1.eu.hivemq.cloud", 8883)
-mqtt_client.loop_start()  # Keep connection alive in background
+mqtt_client.loop_start()
 
 # --- Modbus Configuration ---
 gauge = ModbusClient(
@@ -36,8 +36,8 @@ def log_data_to_file(data):
     with open(get_daily_log_filename(), "a") as file:
         file.write(data + "\n")
 
-# --- InfluxDB Setup ---
-INFLUX_URL = "https://gondola.proxy.rlwy.net:27460"  # ✅ HTTPS for Railway TCP proxy
+# --- InfluxDB Setup (Railway via TCP Proxy HTTP) ---
+INFLUX_URL = "http://gondola.proxy.rlwy.net:27460"  # <- HTTP, not HTTPS
 INFLUX_TOKEN = "scout-token-2024"
 INFLUX_ORG = "EnergyScout"
 INFLUX_BUCKET = "sensor_data"
@@ -61,22 +61,21 @@ def write_to_influx(voltage, current, pf, thd):
             headers=headers,
             params=params,
             data=line,
-            timeout=5,
-            verify=False  # ✅ Temporarily disabled TLS verify for Railway proxy
+            timeout=5  # optional
         )
 
-        print("💡 Payload:", line)
-        print("🔗 URL:", f"{INFLUX_URL}/api/v2/write?org={INFLUX_ORG}&bucket={INFLUX_BUCKET}&precision=s")
-        print("📦 Status:", response.status_code)
-        print("📝 Response:", response.text)
+        print("📡 Payload:", line)
+        print("🔗 URL:", response.url)
 
         if response.status_code != 204:
-            print("⚠️ Failed to write to InfluxDB")
+            print("❌ Failed to write to InfluxDB")
+            print("📦 Status:", response.status_code)
+            print("📝 Response:", response.text)
         else:
             print("✅ Successfully written to InfluxDB")
 
     except Exception as e:
-        print("❌ Exception while writing to InfluxDB:", str(e))
+        print("❌ Exception while writing to InfluxDB:", e)
 
 def read_parameters():
     if not gauge.is_socket_open():
