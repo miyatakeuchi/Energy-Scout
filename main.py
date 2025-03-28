@@ -37,7 +37,7 @@ def log_data_to_file(data):
         file.write(data + "\n")
 
 # --- InfluxDB Setup ---
-INFLUX_URL = "https://influxdb-production-d8c0.up.railway.app"
+INFLUX_URL = "https://influxdb-production-d8c0.up.railway.app:8096"
 INFLUX_TOKEN = "scout-token-2024"
 INFLUX_ORG = "EnergyScout"  # Replace with DOCKER_INFLUXDB_INIT_ORG
 INFLUX_BUCKET = "sensor_data"  # Replace with DOCKER_INFLUXDB_INIT_BUCKET
