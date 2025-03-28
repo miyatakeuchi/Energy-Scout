@@ -37,7 +37,7 @@ def log_data_to_file(data):
         file.write(data + "\n")
 
 # --- InfluxDB Setup ---
-INFLUX_URL = "http://gondola.proxy.rlwy.net:27460"  # Updated proxy TCP endpoint
+INFLUX_URL = "https://gondola.proxy.rlwy.net:27460"  # ✅ HTTPS for Railway TCP proxy
 INFLUX_TOKEN = "scout-token-2024"
 INFLUX_ORG = "EnergyScout"
 INFLUX_BUCKET = "sensor_data"
@@ -56,7 +56,14 @@ def write_to_influx(voltage, current, pf, thd):
     }
 
     try:
-        response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line, timeout=5)
+        response = requests.post(
+            f"{INFLUX_URL}/api/v2/write",
+            headers=headers,
+            params=params,
+            data=line,
+            timeout=5,
+            verify=False  # ✅ Temporarily disabled TLS verify for Railway proxy
+        )
 
         print("💡 Payload:", line)
         print("🔗 URL:", f"{INFLUX_URL}/api/v2/write?org={INFLUX_ORG}&bucket={INFLUX_BUCKET}&precision=s")
@@ -120,7 +127,7 @@ while True:
         mqtt_client.publish("sensor_data", json.dumps(payload))
         print("📤 Sent to MQTT:", payload)
 
-        # Write to InfluxDB
+        # Send to InfluxDB
         write_to_influx(voltage_L3, current_L3, pf_total, thd)
 
     else:
