@@ -35,8 +35,8 @@ def log_data_to_file(data):
     with open(get_daily_log_filename(), "a") as f:
         f.write(data + "\n")
 
-# === INFLUXDB SETUP (using HTTP domain, not TCP proxy) ===
-INFLUX_URL = "http://influxdb-production-d8c0.up.railway.app"  # ✅ use HTTP endpoint, not TCP proxy
+# === INFLUXDB SETUP (using working HTTP endpoint) ===
+INFLUX_URL = "https://influxdb-production-d8c0.up.railway.app"
 INFLUX_TOKEN = "scout-token-2024"
 INFLUX_ORG = "EnergyScout"
 INFLUX_BUCKET = "sensor_data"
