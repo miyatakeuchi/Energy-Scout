@@ -37,11 +37,10 @@ def log_data_to_file(data):
         file.write(data + "\n")
 
 # --- InfluxDB Setup ---
-INFLUX_URL = "https://influxdb-production-d8c0.up.railway.app"
+INFLUX_URL = "http://gondola.proxy.rlwy.net:27460"  # Updated proxy TCP endpoint
 INFLUX_TOKEN = "scout-token-2024"
 INFLUX_ORG = "EnergyScout"
 INFLUX_BUCKET = "sensor_data"
-INFLUX_PORT = 8096  # If needed for debugging, not used in API URL
 
 def write_to_influx(voltage, current, pf, thd):
     headers = {
@@ -57,21 +56,20 @@ def write_to_influx(voltage, current, pf, thd):
     }
 
     try:
-        response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line)
+        response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line, timeout=5)
 
-        # Debug output
-        print("📡 Payload:", line)
-        print("🔗 URL:", response.url)
-        print("📬 Status:", response.status_code)
+        print("💡 Payload:", line)
+        print("🔗 URL:", f"{INFLUX_URL}/api/v2/write?org={INFLUX_ORG}&bucket={INFLUX_BUCKET}&precision=s")
+        print("📦 Status:", response.status_code)
         print("📝 Response:", response.text)
 
         if response.status_code != 204:
             print("⚠️ Failed to write to InfluxDB")
         else:
-            print("✅ Sent to InfluxDB")
+            print("✅ Successfully written to InfluxDB")
 
     except Exception as e:
-        print("❌ Exception writing to InfluxDB:", str(e))
+        print("❌ Exception while writing to InfluxDB:", str(e))
 
 def read_parameters():
     if not gauge.is_socket_open():
@@ -122,7 +120,7 @@ while True:
         mqtt_client.publish("sensor_data", json.dumps(payload))
         print("📤 Sent to MQTT:", payload)
 
-        # Send to InfluxDB
+        # Write to InfluxDB
         write_to_influx(voltage_L3, current_L3, pf_total, thd)
 
     else:
