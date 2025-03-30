@@ -83,7 +83,7 @@ def read_parameters():
         current = read_float_register(0x000A)
         pf_l1 = read_float_register(0x001E)
         pf_total = read_float_register(0x003E)
-        thd = read_float_register(0x00FA)
+        thd = read_float_register(0x00F8)
 
         return voltage, current, pf_l1, pf_total, thd
 
