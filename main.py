@@ -4,26 +4,7 @@ import struct
 import time
 from datetime import datetime
 import os
-import paho.mqtt.client as mqtt
-import json
 import requests
-
-# === MQTT SETUP (HiveMQ Cloud) ===
-mqtt_client = mqtt.Client()
-mqtt_client.username_pw_set("EnergyScout1", "Atutu123")
-mqtt_client.tls_set()
-mqtt_client.connect("96d32576521941598cffab74430f6610.s1.eu.hivemq.cloud", 8883)
-mqtt_client.loop_start()
-
-# === MODBUS CONFIG ===
-gauge = ModbusClient(
-    method="rtu",
-    port="/dev/ttyUSB0",
-    baudrate=9600,
-    parity=serial.PARITY_NONE,
-    stopbits=serial.STOPBITS_ONE,
-    bytesize=serial.EIGHTBITS
-)
 
 # === FILE LOGGING SETUP ===
 os.makedirs("/home/ben/Energy-Scout/logs", exist_ok=True)
@@ -35,14 +16,14 @@ def log_data_to_file(data):
     with open(get_daily_log_filename(), "a") as f:
         f.write(data + "\n")
 
-# === INFLUXDB SETUP (using working HTTP endpoint) ===
+# === INFLUXDB SETUP ===
 INFLUX_URL = "https://influxdb-production-d8c0.up.railway.app"
 INFLUX_TOKEN = "scout-token-2024"
 INFLUX_ORG = "EnergyScout"
 INFLUX_BUCKET = "sensor_data"
 
-def write_to_influx(voltage, current, pf, thd):
-    line = f"energy_data voltage={voltage},current={current},pf={pf},thd={thd}"
+def write_to_influx(voltage, current, pf, thd, power):
+    line = f"energy_data voltage={voltage},current={current},pf={pf},thd={thd},power={power}"
     headers = {
         "Authorization": f"Token {INFLUX_TOKEN}",
         "Content-Type": "text/plain"
@@ -65,6 +46,29 @@ def write_to_influx(voltage, current, pf, thd):
     except Exception as e:
         print("❌ Exception while writing to InfluxDB:", e)
 
+# === MODBUS DEVICE INITIALIZATION WITH USB FALLBACK ===
+def get_modbus_client():
+    for port in ["/dev/ttyUSB0", "/dev/ttyUSB1"]:
+        client = ModbusClient(
+            method="rtu",
+            port=port,
+            baudrate=9600,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            bytesize=serial.EIGHTBITS
+        )
+        if client.connect():
+            print(f"✅ Connected to Modbus device on {port}")
+            return client
+        else:
+            print(f"❌ Could not connect to {port}")
+    return None
+
+gauge = get_modbus_client()
+if gauge is None:
+    print("❌ No Modbus devices found. Exiting.")
+    exit(1)
+
 # === MODBUS READ FUNCTION ===
 def read_parameters():
     if not gauge.is_socket_open():
@@ -84,8 +88,9 @@ def read_parameters():
         pf_l1 = read_float_register(0x001E)
         pf_total = read_float_register(0x003E)
         thd = read_float_register(0x00F8)
+        power = abs(read_float_register(0x0034))  #read absolute value of power because people may mess up putting the CT in the correct direction
 
-        return voltage, current, pf_l1, pf_total, thd
+        return voltage, current, pf_l1, pf_total, thd, power
 
     except Exception as e:
         print(f"❌ Exception during Modbus read: {e}")
@@ -97,25 +102,19 @@ while True:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if parameters is not None:
-        voltage, current, pf_l1, pf_total, thd = parameters
+        voltage, current, pf_l1, pf_total, thd, power = parameters
 
         # Log to file
-        log_line = f"{timestamp}, Voltage L3: {voltage:.2f}V, Current L3: {current:.2f}A, PF L1: {pf_l1:.2f}, PF Total: {pf_total:.2f}, THD: {thd:.2f}%"
+        log_line = (
+            f"{timestamp}, Voltage L3: {voltage:.2f}V, Current L3: {current:.2f}A, "
+            f"PF L1: {pf_l1:.2f}, PF Total: {pf_total:.2f}, THD: {thd:.2f}%, "
+            f"Power Total: {power:.2f}W"
+        )
         log_data_to_file(log_line)
         print("📄 Logged to file:", log_line)
 
-        # Publish to MQTT
-        mqtt_payload = {
-            "voltage": voltage,
-            "current": current,
-            "power_factor": pf_total,
-            "thd": thd
-        }
-        mqtt_client.publish("sensor_data", json.dumps(mqtt_payload))
-        print("📤 Sent to MQTT:", mqtt_payload)
-
         # Write to InfluxDB
-        write_to_influx(voltage, current, pf_total, thd)
+        write_to_influx(voltage, current, pf_l1, thd, power)
 
     else:
         fail_msg = f"{timestamp} ❌ Failed to read Modbus data"
