@@ -11,23 +11,22 @@ client = ModbusSerialClient(
     timeout=3
 )
 
-print("?? Trying to connect to /dev/ttyUSB0...")
+print("🔌 Trying to connect to /dev/ttyUSB0...")
 
 if client.connect():
-    print("? Connected!")
+    print("✅ Connected!")
 
     while True:
-        print("\n?? Reading registers...")
+        print("\n🔄 Reading registers...")
         for address in range(0, 15):  # 0 to 14 (15 addresses total)
             result = client.read_holding_registers(address=address, count=1, slave=1)
 
             if result.isError():
-                print(f"?? Address {address}: Error reading")
+                print(f"⚠️ Address {address}: Error reading")
             else:
-                print(f"?? Address {address}: Value = {result.registers[0]}")
+                print(f"📦 Address {address}: Value = {result.registers[0]}")
 
         time.sleep(5)  # Wait 5 seconds before next read cycle
 
 else:
-    print("? Failed to connect to Modbus device.")
-
+    print("❌ Failed to connect to Modbus device.")
