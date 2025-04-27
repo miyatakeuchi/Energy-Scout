@@ -47,7 +47,7 @@ def read_parameters():
     print("Reading registers...")
     try:
         def read_float_register(start_address, num_registers=2):
-            result = gauge.read_input_registers(start_address, num_registers, slave=1)  # <-- CHANGED HERE
+            result = gauge.read_input_registers(start_address, num_registers, slave=4)  # slave id is 4, which is what we set up in SDM 630
             if result.isError():
                 print(f"Error reading address {start_address}: {result}")
                 return None
