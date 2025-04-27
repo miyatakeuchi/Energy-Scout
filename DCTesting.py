@@ -1,0 +1,32 @@
+from pymodbus.client import ModbusSerialClient
+import time
+
+# Set up the Modbus client
+client = ModbusSerialClient(
+    port='/dev/ttyUSB0',
+    baudrate=9600,
+    parity='N',
+    stopbits=1,
+    bytesize=8,
+    timeout=3
+)
+
+print("🔌 Trying to connect to /dev/ttyUSB0...")
+
+if client.connect():
+    print("✅ Connected!")
+
+    while True:
+        print("\n🔄 Reading registers...")
+        for address in range(0, 15):  # 0 to 14 (15 addresses total)
+            result = client.read_holding_registers(address=address, count=1, slave=1)
+
+            if result.isError():
+                print(f"⚠️ Address {address}: Error reading")
+            else:
+                print(f"📦 Address {address}: Value = {result.registers[0]}")
+
+        time.sleep(5)  # Wait 5 seconds before next read cycle
+
+else:
+    print("❌ Failed to connect to Modbus device.")
