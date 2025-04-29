@@ -158,49 +158,56 @@ def read_usb1_device():
 
 # === MAIN LOOP ===
 while True:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Read USB0 (Main Device)
-    parameters_usb0 = read_usb0_parameters()
+        # Read USB0 (Main Device)
+        parameters_usb0 = read_usb0_parameters()
 
-    # Read USB1 (Second Device)
-    parameters_usb1 = read_usb1_device()
+        # Read USB1 (Second Device)
+        parameters_usb1 = read_usb1_device()
 
-    # ---- USB0 Device ----
-    if parameters_usb0 is not None:
-        voltage, current, pf_l1, pf_total, thd, power = parameters_usb0
+        # ---- USB0 Device ----
+        if parameters_usb0 is not None:
+            voltage, current, pf_l1, pf_total, thd, power = parameters_usb0
 
-        log_line_usb0 = (
-            f"{timestamp}, USB0 Device - Voltage: {voltage:.2f}V, Current: {current:.2f}A, "
-            f"PF L1: {pf_l1:.2f}, PF Total: {pf_total:.2f}, THD: {thd:.2f}%, "
-            f"Power Total: {power:.2f}W"
-        )
-        log_data_to_file(log_line_usb0)
-        print("📄 Logged USB0 Device:", log_line_usb0)
+            log_line_usb0 = (
+                f"{timestamp}, USB0 Device - Voltage: {voltage:.2f}V, Current: {current:.2f}A, "
+                f"PF L1: {pf_l1:.2f}, PF Total: {pf_total:.2f}, THD: {thd:.2f}%, "
+                f"Power Total: {power:.2f}W"
+            )
+            log_data_to_file(log_line_usb0)
+            print("📄 Logged USB0 Device:", log_line_usb0)
 
-        write_usb0_to_influx(voltage, current, pf_l1, thd, power)
+            write_usb0_to_influx(voltage, current, pf_l1, thd, power)
 
-    else:
-        fail_msg_usb0 = f"{timestamp} ❌ Failed to read Modbus data (USB0 Device)"
-        log_data_to_file(fail_msg_usb0)
-        print(fail_msg_usb0)
+        else:
+            fail_msg_usb0 = f"{timestamp} ❌ Failed to read Modbus data (USB0 Device)"
+            log_data_to_file(fail_msg_usb0)
+            print(fail_msg_usb0)
 
-    # ---- USB1 Device ----
-    if parameters_usb1 is not None:
-        voltage_usb1, current_usb1, power_usb1 = parameters_usb1
+        # ---- USB1 Device ----
+        if parameters_usb1 is not None:
+            voltage_usb1, current_usb1, power_usb1 = parameters_usb1
 
-        log_line_usb1 = (
-            f"{timestamp}, USB1 Device - Voltage: {voltage_usb1}V, Current: {current_usb1}A, "
-            f"Power: {power_usb1}W"
-        )
-        log_data_to_file(log_line_usb1)
-        print("📄 Logged USB1 Device:", log_line_usb1)
+            log_line_usb1 = (
+                f"{timestamp}, USB1 Device - Voltage: {voltage_usb1}V, Current: {current_usb1}A, "
+                f"Power: {power_usb1}W"
+            )
+            log_data_to_file(log_line_usb1)
+            print("📄 Logged USB1 Device:", log_line_usb1)
 
-        write_usb1_to_influx(voltage_usb1, current_usb1, power_usb1)
+            write_usb1_to_influx(voltage_usb1, current_usb1, power_usb1)
 
-    else:
-        fail_msg_usb1 = f"{timestamp} ❌ Failed to read Modbus data (USB1 Device)"
-        log_data_to_file(fail_msg_usb1)
-        print(fail_msg_usb1)
+        else:
+            fail_msg_usb1 = f"{timestamp} ❌ Failed to read Modbus data (USB1 Device)"
+            log_data_to_file(fail_msg_usb1)
+            print(fail_msg_usb1)
 
-    time.sleep(5)
+    except Exception as e:
+        error_message = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ❌ Exception in main loop: {e}"
+        log_data_to_file(error_message)
+        print(error_message)
+        time.sleep(10)  # Sleep longer if error happens, optional
+
+    time.sleep(5)  # Normal sleep between readings
