@@ -144,9 +144,7 @@ def read_usb1_device():
         regs = result.registers
         voltage = regs[0]
         current = regs[1]
-        power_low = regs[3]
-        power_high = regs[4]
-        power = (power_high << 16) + power_low
+        power =   regs[2]
 
         return voltage, current, power
 
