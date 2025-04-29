@@ -22,12 +22,14 @@ INFLUX_TOKEN = "scout-token-2024"
 INFLUX_ORG = "EnergyScout"
 INFLUX_BUCKET = "sensor_data"
 
-def write_to_influx(voltage, current, pf, thd, power, extra_data=None):
+def write_to_influx(voltage, current, pf, thd, power, secondary_values=None):
+    # Primary data
     line = f"energy_data voltage={voltage},current={current},pf={pf},thd={thd},power={power}"
     
-    if extra_data:
-        for key, value in extra_data.items():
-            line += f",{key}={value}"
+    # If secondary device values exist, add them
+    if secondary_values:
+        for i, value in enumerate(secondary_values):
+            line += f",secondary_reg_{i}={value}"
 
     headers = {
         "Authorization": f"Token {INFLUX_TOKEN}",
@@ -69,10 +71,10 @@ def get_modbus_client(port, baudrate, parity):
         print(f"❌ Could not connect to {port}")
         return None
 
-# Device 1 (main energy meter)
+# Connect to Device 1 (Energy meter)
 gauge = get_modbus_client("/dev/ttyUSB0", 9600, serial.PARITY_NONE)
 
-# Device 2 (new device - different meter)
+# Connect to Device 2 (Secondary meter)
 secondary_gauge = get_modbus_client("/dev/ttyUSB1", 2400, serial.PARITY_EVEN)
 
 if gauge is None:
@@ -85,7 +87,7 @@ if secondary_gauge is None:
 def read_parameters():
     if not gauge.is_socket_open():
         if not gauge.connect():
-            print("❌ Failed to connect to Modbus device.")
+            print("❌ Failed to reconnect to Modbus device.")
             return None
     try:
         def read_float_register(start_addr):
@@ -114,7 +116,7 @@ def read_secondary_device():
     
     if not secondary_gauge.is_socket_open():
         if not secondary_gauge.connect():
-            print("❌ Failed to connect to secondary Modbus device.")
+            print("❌ Failed to reconnect to secondary Modbus device.")
             return None
     try:
         result = secondary_gauge.read_holding_registers(0, 5, unit=1)
@@ -136,28 +138,24 @@ while True:
     if parameters is not None:
         voltage, current, pf_l1, pf_total, thd, power = parameters
 
-        # Log to file
+        # Prepare log line
         log_line = (
             f"{timestamp}, Voltage L3: {voltage:.2f}V, Current L3: {current:.2f}A, "
             f"PF L1: {pf_l1:.2f}, PF Total: {pf_total:.2f}, THD: {thd:.2f}%, "
             f"Power Total: {power:.2f}W"
         )
 
+        # Add secondary readings if available
         if secondary_values:
             sec_line = ", Secondary Registers: " + ", ".join(map(str, secondary_values))
             log_line += sec_line
 
+        # Log to file
         log_data_to_file(log_line)
         print("📄 Logged to file:", log_line)
 
-        # Prepare secondary data to write
-        extra_data = {}
-        if secondary_values:
-            for i, value in enumerate(secondary_values):
-                extra_data[f"secondary_reg_{i}"] = value
-
         # Write to InfluxDB
-        write_to_influx(voltage, current, pf_l1, thd, power, extra_data=extra_data)
+        write_to_influx(voltage, current, pf_l1, thd, power, secondary_values=secondary_values)
 
     else:
         fail_msg = f"{timestamp} ❌ Failed to read Modbus data"
