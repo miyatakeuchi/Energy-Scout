@@ -36,15 +36,15 @@ def write_to_influx(voltage, current, pf, thd, power):
     try:
         response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line)
         if response.status_code != 204:
-            print("⚠️ Failed to write Main Device to InfluxDB")
-            print("📡 Payload:", line)
-            print("🧭 URL:", response.url)
-            print("📬 Status:", response.status_code)
-            print("📝 Response:", response.text)
+            print("âš ï¸ Failed to write Main Device to InfluxDB")
+            print("ðŸ“¡ Payload:", line)
+            print("ðŸ§­ URL:", response.url)
+            print("ðŸ“¬ Status:", response.status_code)
+            print("ðŸ“ Response:", response.text)
         else:
-            print("✅ Main Device Data written to InfluxDB")
+            print("âœ… Main Device Data written to InfluxDB")
     except Exception as e:
-        print("❌ Exception while writing Main Device to InfluxDB:", e)
+        print("âŒ Exception while writing Main Device to InfluxDB:", e)
 
 def write_usb1_to_influx(voltage, current, power):
     line = f"energy_data,device=usb1 voltage={voltage},current={current},power={power}"
@@ -60,15 +60,15 @@ def write_usb1_to_influx(voltage, current, power):
     try:
         response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line)
         if response.status_code != 204:
-            print("⚠️ Failed to write USB1 Device to InfluxDB")
-            print("📡 Payload:", line)
-            print("🧭 URL:", response.url)
-            print("📬 Status:", response.status_code)
-            print("📝 Response:", response.text)
+            print("âš ï¸ Failed to write USB1 Device to InfluxDB")
+            print("ðŸ“¡ Payload:", line)
+            print("ðŸ§­ URL:", response.url)
+            print("ðŸ“¬ Status:", response.status_code)
+            print("ðŸ“ Response:", response.text)
         else:
-            print("✅ USB1 Device Data written to InfluxDB")
+            print("âœ… USB1 Device Data written to InfluxDB")
     except Exception as e:
-        print("❌ Exception while writing USB1 Device to InfluxDB:", e)
+        print("âŒ Exception while writing USB1 Device to InfluxDB:", e)
 
 # === MODBUS DEVICE INITIALIZATION ===
 def get_modbus_client():
@@ -82,28 +82,28 @@ def get_modbus_client():
             bytesize=serial.EIGHTBITS
         )
         if client.connect():
-            print(f"✅ Connected to Modbus device on {port}")
+            print(f"âœ… Connected to Modbus device on {port}")
             return client
         else:
-            print(f"❌ Could not connect to {port}")
+            print(f"âŒ Could not connect to {port}")
     return None
 
 gauge = get_modbus_client()
 if gauge is None:
-    print("❌ No Modbus devices found. Exiting.")
+    print("âŒ No Modbus devices found. Exiting.")
     exit(1)
 
 # === MODBUS READ FUNCTIONS ===
 def read_parameters():
     if not gauge.is_socket_open():
         if not gauge.connect():
-            print("❌ Failed to reconnect to Main Device.")
+            print("âŒ Failed to reconnect to Main Device.")
             return None
     try:
         def read_float_register(start_addr):
             result = gauge.read_input_registers(start_addr, 2)
             if result.isError():
-                print(f"⚠️ Error reading register {start_addr}")
+                print(f"âš ï¸ Error reading register {start_addr}")
                 return None
             return struct.unpack('>f', struct.pack('>HH', *result.registers))[0]
 
@@ -117,7 +117,7 @@ def read_parameters():
         return voltage, current, pf_l1, pf_total, thd, power
 
     except Exception as e:
-        print(f"❌ Exception during Main Device read: {e}")
+        print(f"âŒ Exception during Main Device read: {e}")
         return None
 
 def read_usb1_device():
@@ -132,13 +132,13 @@ def read_usb1_device():
     )
 
     if not client_usb1.connect():
-        print("❌ Failed to connect to USB1 Device.")
+        print("âŒ Failed to connect to USB1 Device.")
         return None
 
     try:
         result = client_usb1.read_input_registers(address=0, count=7, slave=1)
         if result.isError():
-            print("⚠️ Error reading registers from USB1 Device")
+            print("âš ï¸ Error reading registers from USB1 Device")
             return None
 
         regs = result.registers
@@ -151,7 +151,7 @@ def read_usb1_device():
         return voltage, current, power
 
     except Exception as e:
-        print(f"❌ Exception during USB1 Device read: {e}")
+        print(f"âŒ Exception during USB1 Device read: {e}")
         return None
     finally:
         client_usb1.close()
@@ -176,12 +176,12 @@ while True:
             f"Power Total: {power:.2f}W"
         )
         log_data_to_file(log_line)
-        print("📄 Logged Main Device:", log_line)
+        print("ðŸ“„ Logged Main Device:", log_line)
 
         write_to_influx(voltage, current, pf_l1, thd, power)
 
     else:
-        fail_msg = f"{timestamp} ❌ Failed to read Modbus data (Main Device)"
+        fail_msg = f"{timestamp} âŒ Failed to read Modbus data (Main Device)"
         log_data_to_file(fail_msg)
         print(fail_msg)
 
@@ -194,12 +194,12 @@ while True:
             f"Power: {power_usb1}W"
         )
         log_data_to_file(log_line_usb1)
-        print("📄 Logged USB1 Device:", log_line_usb1)
+        print("ðŸ“„ Logged USB1 Device:", log_line_usb1)
 
         write_usb1_to_influx(voltage_usb1, current_usb1, power_usb1)
 
     else:
-        fail_msg_usb1 = f"{timestamp} ❌ Failed to read Modbus data (USB1 Device)"
+        fail_msg_usb1 = f"{timestamp} âŒ Failed to read Modbus data (USB1 Device)"
         log_data_to_file(fail_msg_usb1)
         print(fail_msg_usb1)
 
