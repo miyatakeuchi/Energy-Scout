@@ -92,7 +92,7 @@ def fetch_weather_data():
                 print("🌤️ Weather data updated.")
 
                 weather_temp = weather_data['current']['temp_c']
-                weather_condition = weather_data['current']['condition']['text'].replace("_", " ")
+                weather_condition="{condition.replace(' ', '\\ ')}"
                 weather_city = weather_data['location']['name']
         except Exception as e:
             print(f"⚠️ Failed to fetch weather data: {e}")
