@@ -26,10 +26,7 @@ INFLUX_ORG = "EnergyScout"
 INFLUX_BUCKET = "sensor_data"
 
 def write_usb0_to_influx(voltage, current, pf, thd, power, city, temp_c, condition):
-    line = (
-        f'energy_data,device=usb0,weather_location={city},weather_condition={condition} '
-        f'voltage={voltage},current={current},pf={pf},thd={thd},power={power},weather_temp_c={temp_c}'
-    )
+    line = f'energy_data,device=usb0 voltage={voltage},current={current},pf={pf},thd={thd},power={power},weather_temp_c={temp_c},weather_location="{city}",weather_condition="{condition}"'
     headers = {
         "Authorization": f"Token {INFLUX_TOKEN}",
         "Content-Type": "text/plain"
@@ -95,8 +92,8 @@ def fetch_weather_data():
                 print("🌤️ Weather data updated.")
 
                 weather_temp = weather_data['current']['temp_c']
-                weather_condition = weather_data['current']['condition']['text'].replace(" ", "_")
-                weather_city = weather_data['location']['name'].replace(" ", "_")
+                weather_condition = weather_data['current']['condition']['text'].replace("_", " ")
+                weather_city = weather_data['location']['name']
         except Exception as e:
             print(f"⚠️ Failed to fetch weather data: {e}")
 
