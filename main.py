@@ -5,6 +5,8 @@ import time
 from datetime import datetime
 import os
 import requests
+import urllib.request
+import json
 
 # === FILE LOGGING SETUP ===
 os.makedirs("/home/ben/Energy-Scout/logs", exist_ok=True)
@@ -22,8 +24,8 @@ INFLUX_TOKEN = "scout-token-2024"
 INFLUX_ORG = "EnergyScout"
 INFLUX_BUCKET = "sensor_data"
 
-def write_usb0_to_influx(voltage, current, pf, thd, power):
-    line = f"energy_data,device=usb0 voltage={voltage},current={current},pf={pf},thd={thd},power={power}"
+def write_usb0_to_influx(voltage, current, pf, thd, power, weather_summary):
+    line = f'energy_data,device=usb0 voltage={voltage},current={current},pf={pf},thd={thd},power={power},weather="{weather_summary}"'
     headers = {
         "Authorization": f"Token {INFLUX_TOKEN}",
         "Content-Type": "text/plain"
@@ -37,10 +39,6 @@ def write_usb0_to_influx(voltage, current, pf, thd, power):
         response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line)
         if response.status_code != 204:
             print("⚠️ Failed to write Main Device (usb0) to InfluxDB")
-            print("📡 Payload:", line)
-            print("🧭 URL:", response.url)
-            print("📬 Status:", response.status_code)
-            print("📝 Response:", response.text)
         else:
             print("✅ Main Device (usb0) Data written to InfluxDB")
     except Exception as e:
@@ -61,26 +59,63 @@ def write_usb1_to_influx(voltage, current, power):
         response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line)
         if response.status_code != 204:
             print("⚠️ Failed to write USB1 Device to InfluxDB")
-            print("📡 Payload:", line)
-            print("🧭 URL:", response.url)
-            print("📬 Status:", response.status_code)
-            print("📝 Response:", response.text)
         else:
             print("✅ USB1 Device Data written to InfluxDB")
     except Exception as e:
         print("❌ Exception while writing USB1 Device to InfluxDB:", e)
 
+def write_weather_to_influx(temp_c, wind_kph, humidity, condition_text):
+    condition_clean = condition_text.replace(" ", "_")
+    line = f"weather_data,location=SanDiego,condition={condition_clean} temp_c={temp_c},wind_kph={wind_kph},humidity={humidity}"
+    headers = {
+        "Authorization": f"Token {INFLUX_TOKEN}",
+        "Content-Type": "text/plain"
+    }
+    params = {
+        "org": INFLUX_ORG,
+        "bucket": INFLUX_BUCKET,
+        "precision": "s"
+    }
+    try:
+        response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line)
+        if response.status_code != 204:
+            print("⚠️ Failed to write weather data to InfluxDB")
+        else:
+            print("✅ Weather data written to InfluxDB")
+    except Exception as e:
+        print("❌ Exception while writing weather to InfluxDB:", e)
+
+# === WEATHERAPI SETUP ===
+WEATHER_API_KEY = 'a5bfc0068cf949259eb41600250907'
+WEATHER_CITY = 'San Diego'
+weather_data = None
+last_weather_fetch = 0
+
+def fetch_weather_data():
+    global weather_data, last_weather_fetch
+    current_time = time.time()
+    if current_time - last_weather_fetch > 900 or weather_data is None:
+        try:
+            url = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={WEATHER_CITY}"
+            with urllib.request.urlopen(url) as response:
+                weather_data = json.loads(response.read().decode())
+                last_weather_fetch = current_time
+                print("🌤️ Weather data updated.")
+
+                temp_c = weather_data['current']['temp_c']
+                wind_kph = weather_data['current']['wind_kph']
+                humidity = weather_data['current']['humidity']
+                condition = weather_data['current']['condition']['text']
+                write_weather_to_influx(temp_c, wind_kph, humidity, condition)
+        except Exception as e:
+            print(f"⚠️ Failed to fetch weather data: {e}")
+
 # === MODBUS DEVICE INITIALIZATION ===
 def get_modbus_client():
     for port in ["/dev/ttyUSB0", "/dev/ttyUSB1"]:
-        client = ModbusClient(
-            method="rtu",
-            port=port,
-            baudrate=9600,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-            bytesize=serial.EIGHTBITS
-        )
+        client = ModbusClient(method="rtu", port=port, baudrate=9600,
+                              parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE,
+                              bytesize=serial.EIGHTBITS)
         if client.connect():
             print(f"✅ Connected to Modbus device on {port}")
             return client
@@ -103,7 +138,6 @@ def read_usb0_parameters():
         def read_float_register(start_addr):
             result = gauge.read_input_registers(start_addr, 2)
             if result.isError():
-                print(f"⚠️ Error reading register {start_addr}")
                 return None
             return struct.unpack('>f', struct.pack('>HH', *result.registers))[0]
 
@@ -113,41 +147,24 @@ def read_usb0_parameters():
         pf_total = read_float_register(0x003E)
         thd = read_float_register(0x00F8)
         power = abs(read_float_register(0x0034))
-
         return voltage, current, pf_l1, pf_total, thd, power
-
     except Exception as e:
         print(f"❌ Exception during USB0 device read: {e}")
         return None
 
 def read_usb1_device():
-    client_usb1 = ModbusClient(
-        method="rtu",
-        port="/dev/ttyUSB1",
-        baudrate=9600,
-        parity=serial.PARITY_NONE,
-        stopbits=serial.STOPBITS_ONE,
-        bytesize=serial.EIGHTBITS,
-        timeout=3
-    )
-
+    client_usb1 = ModbusClient(method="rtu", port="/dev/ttyUSB1", baudrate=9600,
+                               parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE,
+                               bytesize=serial.EIGHTBITS, timeout=3)
     if not client_usb1.connect():
         print("❌ Failed to connect to USB1 Device.")
         return None
-
     try:
         result = client_usb1.read_input_registers(address=0, count=7, slave=1)
         if result.isError():
-            print("⚠️ Error reading registers from USB1 Device")
             return None
-
         regs = result.registers
-        voltage = regs[0]
-        current = regs[1]
-        power =   regs[2]
-
-        return voltage, current, power
-
+        return regs[0], regs[1], regs[2]
     except Exception as e:
         print(f"❌ Exception during USB1 Device read: {e}")
         return None
@@ -159,53 +176,45 @@ while True:
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Read USB0 (Main Device)
-        parameters_usb0 = read_usb0_parameters()
+        fetch_weather_data()
+        if weather_data:
+            weather_summary = (
+                f"{weather_data['location']['name']} | "
+                f"{weather_data['current']['temp_c']}°C | "
+                f"{weather_data['current']['condition']['text']}"
+            )
+        else:
+            weather_summary = "Unavailable"
 
-        # Read USB1 (Second Device)
+        parameters_usb0 = read_usb0_parameters()
         parameters_usb1 = read_usb1_device()
 
-        # ---- USB0 Device ----
         if parameters_usb0 is not None:
             voltage, current, pf_l1, pf_total, thd, power = parameters_usb0
-
             log_line_usb0 = (
                 f"{timestamp}, USB0 Device - Voltage: {voltage:.2f}V, Current: {current:.2f}A, "
                 f"PF L1: {pf_l1:.2f}, PF Total: {pf_total:.2f}, THD: {thd:.2f}%, "
-                f"Power Total: {power:.2f}W"
+                f"Power: {power:.2f}W | Weather: {weather_summary}"
             )
             log_data_to_file(log_line_usb0)
-            print("📄 Logged USB0 Device:", log_line_usb0)
-
-            write_usb0_to_influx(voltage, current, pf_l1, thd, power)
-
+            print(log_line_usb0)
+            write_usb0_to_influx(voltage, current, pf_l1, thd, power, weather_summary)
         else:
-            fail_msg_usb0 = f"{timestamp} ❌ Failed to read Modbus data (USB0 Device)"
-            log_data_to_file(fail_msg_usb0)
-            print(fail_msg_usb0)
+            print(f"{timestamp} ❌ Failed to read Modbus data (USB0 Device)")
 
-        # ---- USB1 Device ----
         if parameters_usb1 is not None:
-            voltage_usb1, current_usb1, power_usb1 = parameters_usb1
-
-            log_line_usb1 = (
-                f"{timestamp}, USB1 Device - Voltage: {voltage_usb1}V, Current: {current_usb1}A, "
-                f"Power: {power_usb1}W"
-            )
+            v1, c1, p1 = parameters_usb1
+            log_line_usb1 = f"{timestamp}, USB1 Device - Voltage: {v1}V, Current: {c1}A, Power: {p1}W"
             log_data_to_file(log_line_usb1)
-            print("📄 Logged USB1 Device:", log_line_usb1)
-
-            write_usb1_to_influx(voltage_usb1, current_usb1, power_usb1)
-
+            print(log_line_usb1)
+            write_usb1_to_influx(v1, c1, p1)
         else:
-            fail_msg_usb1 = f"{timestamp} ❌ Failed to read Modbus data (USB1 Device)"
-            log_data_to_file(fail_msg_usb1)
-            print(fail_msg_usb1)
+            print(f"{timestamp} ❌ Failed to read Modbus data (USB1 Device)")
 
     except Exception as e:
-        error_message = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ❌ Exception in main loop: {e}"
-        log_data_to_file(error_message)
-        print(error_message)
-        time.sleep(10)  # Sleep longer if error happens, optional
+        error_msg = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ❌ Exception: {e}"
+        print(error_msg)
+        log_data_to_file(error_msg)
+        time.sleep(10)
 
-    time.sleep(5)  # Normal sleep between readings
+    time.sleep(5)
