@@ -8,7 +8,6 @@ import requests
 import urllib.request
 import json
 from urllib.parse import quote
-from gps import gps, WATCH_ENABLE, WATCH_NEWSTYLE
 
 # === FILE LOGGING SETUP ===
 os.makedirs("/home/ben/Energy-Scout/logs", exist_ok=True)
@@ -72,10 +71,10 @@ def write_usb1_to_influx(voltage, current, power):
     except Exception as e:
         print("❌ Exception while writing USB1 Device to InfluxDB:", e)
 
-def write_gps_to_influx(lat, lon, alt):
+def write_location_to_influx(lat, lon, city):
     if lat is None or lon is None:
         return
-    line = f"gps_data latitude={lat},longitude={lon},altitude={alt}"
+    line = f'ip_location latitude={lat},longitude={lon},city="{city}"'
     headers = {
         "Authorization": f"Token {INFLUX_TOKEN}",
         "Content-Type": "text/plain"
@@ -88,14 +87,27 @@ def write_gps_to_influx(lat, lon, alt):
     try:
         response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line)
         if response.status_code != 204:
-            print("⚠️ Failed to write GPS data to InfluxDB")
-            print("📦 Payload:", line)
-            print("📬 Status:", response.status_code)
-            print("📝 Response:", response.text)
+            print("⚠️ Failed to write location to InfluxDB:", response.text)
         else:
-            print("✅ GPS Data written to InfluxDB")
+            print("✅ IP-based location written to InfluxDB")
     except Exception as e:
-        print("❌ Exception while writing GPS to InfluxDB:", e)
+        print("❌ Error writing location to InfluxDB:", e)
+
+# === IPINFO GEOLOCATION ===
+IPINFO_TOKEN = "a5f4d0ca838c90"
+
+def get_location_from_ip():
+    try:
+        response = requests.get(f"https://ipinfo.io/json?token={IPINFO_TOKEN}")
+        data = response.json()
+        loc = data.get("loc")  # e.g., "37.3860,-122.0838"
+        if loc:
+            lat, lon = map(float, loc.split(","))
+            city = data.get("city", "Unknown")
+            return lat, lon, city
+    except Exception as e:
+        print("❌ Failed to get IP-based location:", e)
+    return None, None, "Unknown"
 
 # === WEATHER SETUP ===
 WEATHER_API_KEY = "a5bfc0068cf949259eb41600250907"
@@ -186,22 +198,6 @@ def read_usb1_device():
     finally:
         client_usb1.close()
 
-# === GPS SETUP ===
-gps_session = gps(mode=WATCH_ENABLE | WATCH_NEWSTYLE)
-
-def get_gps_coordinates():
-    try:
-        report = gps_session.next()
-        if report['class'] == 'TPV':
-            lat = getattr(report, 'lat', None)
-            lon = getattr(report, 'lon', None)
-            alt = getattr(report, 'alt', None)
-            if lat is not None and lon is not None:
-                return lat, lon, alt
-    except:
-        pass
-    return None, None, None
-
 # === MAIN LOOP ===
 while True:
     try:
@@ -210,7 +206,7 @@ while True:
 
         parameters_usb0 = read_usb0_parameters()
         parameters_usb1 = read_usb1_device()
-        lat, lon, alt = get_gps_coordinates()
+        lat, lon, city_name = get_location_from_ip()
 
         if parameters_usb0 is not None:
             voltage, current, pf_l1, pf_total, thd, power = parameters_usb0
@@ -233,12 +229,12 @@ while True:
             log_data_to_file(f"{timestamp} ❌ Failed to read USB1 device")
 
         if lat is not None and lon is not None:
-            gps_log = f"{timestamp}, GPS - Latitude: {lat:.6f}, Longitude: {lon:.6f}, Altitude: {alt}"
-            log_data_to_file(gps_log)
-            print("📍 Logged GPS:", gps_log)
-            write_gps_to_influx(lat, lon, alt)
+            location_log = f"{timestamp}, Location - Latitude: {lat:.6f}, Longitude: {lon:.6f}, City: {city_name}"
+            log_data_to_file(location_log)
+            print("📍 Logged IP Location:", location_log)
+            write_location_to_influx(lat, lon, city_name)
         else:
-            log_data_to_file(f"{timestamp} ❌ Failed to read GPS")
+            log_data_to_file(f"{timestamp} ❌ Failed to retrieve IP-based location")
 
     except Exception as e:
         error_message = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ❌ Exception in main loop: {e}"
