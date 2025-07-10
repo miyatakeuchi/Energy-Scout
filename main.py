@@ -8,6 +8,7 @@ import requests
 import urllib.request
 import json
 from urllib.parse import quote
+from gps import gps, WATCH_ENABLE, WATCH_NEWSTYLE
 
 # === FILE LOGGING SETUP ===
 os.makedirs("/home/ben/Energy-Scout/logs", exist_ok=True)
@@ -39,14 +40,14 @@ def write_usb0_to_influx(voltage, current, pf, thd, power, city, temp_c, conditi
     try:
         response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line)
         if response.status_code != 204:
-            print("âš ï¸ Failed to write Main Device (usb0) to InfluxDB")
-            print("ðŸ“¡ Payload:", line)
-            print("ðŸ“¬ Status:", response.status_code)
-            print("ðŸ“ Response:", response.text)
+            print("⚠️ Failed to write Main Device (usb0) to InfluxDB")
+            print("📦 Payload:", line)
+            print("📬 Status:", response.status_code)
+            print("📝 Response:", response.text)
         else:
-            print("âœ… Main Device (usb0) Data written to InfluxDB")
+            print("✅ Main Device (usb0) Data written to InfluxDB")
     except Exception as e:
-        print("âŒ Exception while writing Main Device (usb0) to InfluxDB:", e)
+        print("❌ Exception while writing Main Device (usb0) to InfluxDB:", e)
 
 def write_usb1_to_influx(voltage, current, power):
     line = f"energy_data,device=usb1 voltage={voltage},current={current},power={power}"
@@ -62,14 +63,39 @@ def write_usb1_to_influx(voltage, current, power):
     try:
         response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line)
         if response.status_code != 204:
-            print("âš ï¸ Failed to write USB1 Device to InfluxDB")
-            print("ðŸ“¡ Payload:", line)
-            print("ðŸ“¬ Status:", response.status_code)
-            print("ðŸ“ Response:", response.text)
+            print("⚠️ Failed to write USB1 Device to InfluxDB")
+            print("📦 Payload:", line)
+            print("📬 Status:", response.status_code)
+            print("📝 Response:", response.text)
         else:
-            print("âœ… USB1 Device Data written to InfluxDB")
+            print("✅ USB1 Device Data written to InfluxDB")
     except Exception as e:
-        print("âŒ Exception while writing USB1 Device to InfluxDB:", e)
+        print("❌ Exception while writing USB1 Device to InfluxDB:", e)
+
+def write_gps_to_influx(lat, lon, alt):
+    if lat is None or lon is None:
+        return
+    line = f"gps_data latitude={lat},longitude={lon},altitude={alt}"
+    headers = {
+        "Authorization": f"Token {INFLUX_TOKEN}",
+        "Content-Type": "text/plain"
+    }
+    params = {
+        "org": INFLUX_ORG,
+        "bucket": INFLUX_BUCKET,
+        "precision": "s"
+    }
+    try:
+        response = requests.post(f"{INFLUX_URL}/api/v2/write", headers=headers, params=params, data=line)
+        if response.status_code != 204:
+            print("⚠️ Failed to write GPS data to InfluxDB")
+            print("📦 Payload:", line)
+            print("📬 Status:", response.status_code)
+            print("📝 Response:", response.text)
+        else:
+            print("✅ GPS Data written to InfluxDB")
+    except Exception as e:
+        print("❌ Exception while writing GPS to InfluxDB:", e)
 
 # === WEATHER SETUP ===
 WEATHER_API_KEY = "a5bfc0068cf949259eb41600250907"
@@ -89,13 +115,13 @@ def fetch_weather_data():
             with urllib.request.urlopen(url) as response:
                 weather_data = json.loads(response.read().decode())
                 last_weather_fetch = current_time
-                print("ðŸŒ¤ï¸ Weather data updated.")
+                print("🌤️ Weather data updated.")
 
                 weather_temp = weather_data['current']['temp_c']
                 weather_condition = weather_data['current']['condition']['text'].replace("_", " ")
                 weather_city = weather_data['location']['name']
         except Exception as e:
-            print(f"âš ï¸ Failed to fetch weather data: {e}")
+            print(f"⚠️ Failed to fetch weather data: {e}")
 
 # === MODBUS SETUP ===
 def get_modbus_client():
@@ -103,27 +129,27 @@ def get_modbus_client():
         client = ModbusClient(method="rtu", port=port, baudrate=9600, parity=serial.PARITY_NONE,
                               stopbits=serial.STOPBITS_ONE, bytesize=serial.EIGHTBITS)
         if client.connect():
-            print(f"âœ… Connected to Modbus device on {port}")
+            print(f"✅ Connected to Modbus device on {port}")
             return client
         else:
-            print(f"âŒ Could not connect to {port}")
+            print(f"❌ Could not connect to {port}")
     return None
 
 gauge = get_modbus_client()
 if gauge is None:
-    print("âŒ No Modbus devices found. Exiting.")
+    print("❌ No Modbus devices found. Exiting.")
     exit(1)
 
 def read_usb0_parameters():
     if not gauge.is_socket_open():
         if not gauge.connect():
-            print("âŒ Failed to reconnect to USB0 device.")
+            print("❌ Failed to reconnect to USB0 device.")
             return None
     try:
         def read_float_register(start_addr):
             result = gauge.read_input_registers(start_addr, 2)
             if result.isError():
-                print(f"âš ï¸ Error reading register {start_addr}")
+                print(f"⚠️ Error reading register {start_addr}")
                 return None
             return struct.unpack('>f', struct.pack('>HH', *result.registers))[0]
 
@@ -137,7 +163,7 @@ def read_usb0_parameters():
         return voltage, current, pf_l1, pf_total, thd, power
 
     except Exception as e:
-        print(f"âŒ Exception during USB0 device read: {e}")
+        print(f"❌ Exception during USB0 device read: {e}")
         return None
 
 def read_usb1_device():
@@ -145,20 +171,36 @@ def read_usb1_device():
                                parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE,
                                bytesize=serial.EIGHTBITS, timeout=3)
     if not client_usb1.connect():
-        print("âŒ Failed to connect to USB1 Device.")
+        print("❌ Failed to connect to USB1 Device.")
         return None
     try:
         result = client_usb1.read_input_registers(address=0, count=7, slave=1)
         if result.isError():
-            print("âš ï¸ Error reading registers from USB1 Device")
+            print("⚠️ Error reading registers from USB1 Device")
             return None
         regs = result.registers
         return regs[0], regs[1], regs[2]
     except Exception as e:
-        print(f"âŒ Exception during USB1 Device read: {e}")
+        print(f"❌ Exception during USB1 Device read: {e}")
         return None
     finally:
         client_usb1.close()
+
+# === GPS SETUP ===
+gps_session = gps(mode=WATCH_ENABLE | WATCH_NEWSTYLE)
+
+def get_gps_coordinates():
+    try:
+        report = gps_session.next()
+        if report['class'] == 'TPV':
+            lat = getattr(report, 'lat', None)
+            lon = getattr(report, 'lon', None)
+            alt = getattr(report, 'alt', None)
+            if lat is not None and lon is not None:
+                return lat, lon, alt
+    except:
+        pass
+    return None, None, None
 
 # === MAIN LOOP ===
 while True:
@@ -168,29 +210,38 @@ while True:
 
         parameters_usb0 = read_usb0_parameters()
         parameters_usb1 = read_usb1_device()
+        lat, lon, alt = get_gps_coordinates()
 
         if parameters_usb0 is not None:
             voltage, current, pf_l1, pf_total, thd, power = parameters_usb0
             log_line_usb0 = (f"{timestamp}, USB0 Device - Voltage: {voltage:.2f}V, Current: {current:.2f}A, "
                              f"PF L1: {pf_l1:.2f}, PF Total: {pf_total:.2f}, THD: {thd:.2f}%, Power: {power:.2f}W, "
-                             f"Weather: {weather_city} | {weather_temp}Â°C | {weather_condition}")
+                             f"Weather: {weather_city} | {weather_temp}°C | {weather_condition}")
             log_data_to_file(log_line_usb0)
-            print("ðŸ“„ Logged USB0 Device:", log_line_usb0)
+            print("📄 Logged USB0 Device:", log_line_usb0)
             write_usb0_to_influx(voltage, current, pf_l1, thd, power, weather_city, weather_temp, weather_condition)
         else:
-            log_data_to_file(f"{timestamp} âŒ Failed to read USB0 device")
+            log_data_to_file(f"{timestamp} ❌ Failed to read USB0 device")
 
         if parameters_usb1 is not None:
             v1, c1, p1 = parameters_usb1
             log_line_usb1 = f"{timestamp}, USB1 Device - Voltage: {v1}V, Current: {c1}A, Power: {p1}W"
             log_data_to_file(log_line_usb1)
-            print("ðŸ“„ Logged USB1 Device:", log_line_usb1)
+            print("📄 Logged USB1 Device:", log_line_usb1)
             write_usb1_to_influx(v1, c1, p1)
         else:
-            log_data_to_file(f"{timestamp} âŒ Failed to read USB1 device")
+            log_data_to_file(f"{timestamp} ❌ Failed to read USB1 device")
+
+        if lat is not None and lon is not None:
+            gps_log = f"{timestamp}, GPS - Latitude: {lat:.6f}, Longitude: {lon:.6f}, Altitude: {alt}"
+            log_data_to_file(gps_log)
+            print("📍 Logged GPS:", gps_log)
+            write_gps_to_influx(lat, lon, alt)
+        else:
+            log_data_to_file(f"{timestamp} ❌ Failed to read GPS")
 
     except Exception as e:
-        error_message = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} âŒ Exception in main loop: {e}"
+        error_message = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ❌ Exception in main loop: {e}"
         log_data_to_file(error_message)
         print(error_message)
         time.sleep(10)
