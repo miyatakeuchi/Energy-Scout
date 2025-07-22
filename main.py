@@ -89,29 +89,18 @@ def write_location_to_influx(lat, lon, city):
         if response.status_code != 204:
             print("⚠️ Failed to write location to InfluxDB:", response.text)
         else:
-            print("✅ IP-based location written to InfluxDB")
+            print("✅ Hardcoded location written to InfluxDB")
     except Exception as e:
         print("❌ Error writing location to InfluxDB:", e)
 
-# === IPINFO GEOLOCATION ===
-IPINFO_TOKEN = "a5f4d0ca838c90"
-
-def get_location_from_ip():
-    try:
-        response = requests.get(f"https://ipinfo.io/json?token={IPINFO_TOKEN}")
-        data = response.json()
-        loc = data.get("loc")  # e.g., "37.3860,-122.0838"
-        if loc:
-            lat, lon = map(float, loc.split(","))
-            city = data.get("city", "Unknown")
-            return lat, lon, city
-    except Exception as e:
-        print("❌ Failed to get IP-based location:", e)
-    return None, None, "Unknown"
+# === HARDCODED COORDINATES ===
+lat = 35.63172
+lon = -82.36431
+city_name = "Asheville"
 
 # === WEATHER SETUP ===
 WEATHER_API_KEY = "a5bfc0068cf949259eb41600250907"
-WEATHER_CITY = "San Diego"
+WEATHER_CITY = f"{lat},{lon}"
 weather_data = None
 weather_city = "Unknown"
 weather_temp = 0.0
@@ -206,7 +195,6 @@ while True:
 
         parameters_usb0 = read_usb0_parameters()
         parameters_usb1 = read_usb1_device()
-        lat, lon, city_name = get_location_from_ip()
 
         if parameters_usb0 is not None:
             voltage, current, pf_l1, pf_total, thd, power = parameters_usb0
@@ -228,13 +216,10 @@ while True:
         else:
             log_data_to_file(f"{timestamp} ❌ Failed to read USB1 device")
 
-        if lat is not None and lon is not None:
-            location_log = f"{timestamp}, Location - Latitude: {lat:.6f}, Longitude: {lon:.6f}, City: {city_name}"
-            log_data_to_file(location_log)
-            print("📍 Logged IP Location:", location_log)
-            write_location_to_influx(lat, lon, city_name)
-        else:
-            log_data_to_file(f"{timestamp} ❌ Failed to retrieve IP-based location")
+        location_log = f"{timestamp}, Location - Latitude: {lat:.6f}, Longitude: {lon:.6f}, City: {city_name}"
+        log_data_to_file(location_log)
+        print("📍 Logged Hardcoded Location:", location_log)
+        write_location_to_influx(lat, lon, city_name)
 
     except Exception as e:
         error_message = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ❌ Exception in main loop: {e}"
