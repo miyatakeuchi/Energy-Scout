@@ -148,13 +148,41 @@ def read_dc_device(port):
         print(f"❌ Exception during DC device read on {port}: {e}")
         return None
 
+# === NEW AC BREAKER (USB1) ===
+def read_usb1_breaker():
+    try:
+        client = ModbusClient(method="rtu", port="/dev/ttyUSB1", baudrate=9600,
+                              parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE,
+                              bytesize=serial.EIGHTBITS, timeout=2)
+        if not client.connect():
+            print("❌ Failed to connect to AC breaker on /dev/ttyUSB1")
+            return None
+
+        def read_input_register(addr, scale=1):
+            rr = client.read_input_registers(addr, 1, slave=1)
+            if rr.isError():
+                print(f"⚠️ Read error at 0x{addr:04X}")
+                return None
+            return rr.registers[0] / scale
+
+        voltage = read_input_register(0x0008, 1)
+        current = read_input_register(0x0009, 100)
+        power   = read_input_register(0x000B, 10)
+        pf      = read_input_register(0x000A, 1000)
+        client.close()
+
+        return voltage, current, power, pf
+    except Exception as e:
+        print(f"❌ Exception during AC breaker read: {e}")
+        return None
+
 # === MAIN LOOP ===
 while True:
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         fetch_weather_data()
 
-        # AC Meter
+        # AC Meter (USB0)
         parameters_usb0 = read_usb0_parameters()
         if parameters_usb0 is not None:
             voltage, current, pf, thd, power = parameters_usb0
@@ -166,6 +194,17 @@ while True:
                             weather_temp_c=weather_temp, weather_location=weather_city, weather_condition=weather_condition)
         else:
             log_data_to_file(f"{timestamp} ❌ Failed to read AC meter")
+
+        # AC Breaker (USB1)
+        breaker_data = read_usb1_breaker()
+        if breaker_data is not None:
+            v_breaker, c_breaker, p_breaker, pf_breaker = breaker_data
+            log_line_breaker = f"{timestamp}, USB1 Breaker - Voltage: {v_breaker:.1f}V, Current: {c_breaker:.2f}A, Power: {p_breaker:.1f}W, PF: {pf_breaker:.3f}"
+            log_data_to_file(log_line_breaker)
+            print("📄 Logged AC Breaker:", log_line_breaker)
+            write_to_influx("usb1_breaker", voltage=v_breaker, current=c_breaker, power=p_breaker, pf=pf_breaker)
+        else:
+            log_data_to_file(f"{timestamp} ❌ Failed to read AC breaker")
 
         # DC Battery (USB2)
         battery_data = read_dc_device("/dev/ttyUSB2")
