@@ -140,7 +140,7 @@ def read_dc_device(port):
             raw = (rr.registers[0] << 16) + rr.registers[1]
             return raw / scale
         voltage = read_param(0x0100, 2, 10000)
-        current = read_param(0x0102, 2, 100000)
+        current = read_param(0x0102, 2, 10000)
         pf = read_param(0x010A, 2, 1000)
         client.close()
         return voltage, current, pf
