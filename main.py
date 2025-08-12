@@ -10,10 +10,10 @@ import json
 from urllib.parse import quote
 
 # === FILE LOGGING SETUP ===
-os.makedirs("/home/scout1/Energy-Scout/logs", exist_ok=True)
+os.makedirs("/home/ben/Energy-Scout/logs", exist_ok=True)
 
 def get_daily_log_filename():
-    return f"/home/scout1/Energy-Scout/logs/{datetime.now().strftime('%A')}.txt"
+    return f"/home/ben/Energy-Scout/logs/{datetime.now().strftime('%A')}.txt"
 
 def log_data_to_file(data):
     with open(get_daily_log_filename(), "a") as f:
